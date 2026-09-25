@@ -1,20 +1,21 @@
-# --- Stage 1: Build update-center2 using JDK 21 ---
+# --- Stage 1: Build update-center2 with all dependencies ---
 FROM maven:3.9.6-eclipse-temurin-21 AS builder
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 https://github.com/jenkins-infra/update-center2.git /app
 WORKDIR /app
 
-# Build project
-RUN mvn clean package -DskipTests \
+# Build full package including assembly/shaded dependencies
+RUN mvn clean package appassembler:assemble -DskipTests \
     -Dhttp.keepAlive=false \
     -Dmaven.wagon.http.retryHandler.count=3 \
     -Dmaven.wagon.rto=10000
 
-# Ensure single named JAR exists for clean copying
-RUN cp $(find target -maxdepth 1 -name "update-center2-*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" | head -n 1) /app/target/update-center2.jar
+# Locate and copy the executable jar with dependencies
+RUN cp $(find target -name "update-center2-*-bin.jar" -o -name "update-center2-*-jar-with-dependencies.jar" | head -n 1) /app/target/update-center2.jar || \
+    cp target/update-center2-*.jar /app/target/update-center2.jar
 
-# --- Stage 2: Runtime image using Java 21 ---
+# --- Stage 2: Runtime image ---
 FROM alpine:3.19
 
 RUN apk add --no-cache \
@@ -34,10 +35,10 @@ RUN echo 'server { \
     } \
 }' > /etc/nginx/http.d/default.conf
 
-# Copy exact JAR file from Builder stage
+# Copy bundled JAR from Builder stage
 COPY --from=builder /app/target/update-center2.jar /usr/local/bin/update-center2.jar
 
-# Copy sync execution script
+# Copy runner script
 COPY sync-center.sh /usr/local/bin/sync-center.sh
 RUN chmod +x /usr/local/bin/sync-center.sh
 
