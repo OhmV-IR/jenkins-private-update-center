@@ -1,16 +1,20 @@
-# --- Stage 1: Build update-center2 from official source ---
-FROM maven:3.9.6-eclipse-temurin-17 AS builder
+# --- Stage 1: Build update-center2 using JDK 21 ---
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
 
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 https://github.com/jenkins-infra/update-center2.git /app
 WORKDIR /app
-RUN mvn clean package -DskipTests
 
-# --- Stage 2: Runtime image ---
+RUN mvn clean package -DskipTests \
+    -Dhttp.keepAlive=false \
+    -Dmaven.wagon.http.retryHandler.count=3 \
+    -Dmaven.wagon.rto=10000
+
+# --- Stage 2: Runtime image using Java 21 ---
 FROM alpine:3.19
 
 RUN apk add --no-cache \
-    openjdk17-jre-headless \
+    openjdk21-jre-headless \
     nginx \
     busybox-extras \
     bash
