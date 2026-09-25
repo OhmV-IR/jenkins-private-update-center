@@ -5,10 +5,14 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 https://github.com/jenkins-infra/update-center2.git /app
 WORKDIR /app
 
+# Build project
 RUN mvn clean package -DskipTests \
     -Dhttp.keepAlive=false \
     -Dmaven.wagon.http.retryHandler.count=3 \
     -Dmaven.wagon.rto=10000
+
+# Ensure single named JAR exists for clean copying
+RUN cp $(find target -maxdepth 1 -name "update-center2-*.jar" ! -name "*-sources.jar" ! -name "*-javadoc.jar" | head -n 1) /app/target/update-center2.jar
 
 # --- Stage 2: Runtime image using Java 21 ---
 FROM alpine:3.19
@@ -30,8 +34,8 @@ RUN echo 'server { \
     } \
 }' > /etc/nginx/http.d/default.conf
 
-# Copy compiled update-center2 executable from Builder stage
-COPY --from=builder /app/target/update-center2-*-bin.jar /usr/local/bin/update-center2.jar
+# Copy exact JAR file from Builder stage
+COPY --from=builder /app/target/update-center2.jar /usr/local/bin/update-center2.jar
 
 # Copy sync execution script
 COPY sync-center.sh /usr/local/bin/sync-center.sh
