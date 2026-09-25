@@ -12,7 +12,8 @@ RUN mvn clean package appassembler:assemble -DskipTests \
     -Dmaven.wagon.rto=10000
 
 # Locate generated appassembler output directory and stage it cleanly
-RUN APP_DIR=$(find /app/target -type d -name "appassembler" -o -name "update-center2-*-bin" | head -n 1) && \
+RUN APP_DIR=$(find /app/target -type d \( -name "appassembler" -o -name "update-center2-*-bin" \) -print -quit) && \
+    if [ -z "$APP_DIR" ]; then echo "No appassembler output found under /app/target" >&2; exit 1; fi && \
     cp -r "$APP_DIR" /app/target/dist
 
 # --- Stage 2: Runtime image ---
@@ -39,9 +40,10 @@ RUN echo 'server { \
 COPY --from=builder /app/target/dist /opt/update-center2
 
 # Dynamically link the executable script to /usr/local/bin/update-center2
-RUN BIN_PATH=$(find /opt/update-center2 -type f -name "update-center2" | head -n 1) && \
+RUN BIN_PATH=$(find /opt/update-center2 -type f \( -name "update-center2" -o -name "app" \) -print -quit) && \
+    if [ -z "$BIN_PATH" ]; then echo "No update-center2 executable found under /opt/update-center2" >&2; exit 1; fi && \
     chmod +x "$BIN_PATH" && \
-    ln -s "$BIN_PATH" /usr/local/bin/update-center2
+    ln -sf "$BIN_PATH" /usr/local/bin/update-center2
 
 # Copy sync script
 COPY sync-center.sh /usr/local/bin/sync-center.sh
