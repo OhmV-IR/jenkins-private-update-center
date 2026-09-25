@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  jenkins-update-center:
+    build: .
+    image: registry.ohmvir.dev/jenkins-update-center
+    container_name: jenkins-update-center
+    restart: always
+    ports:
+      - "8089:80"
+    environment:
+      - NEXUS_URL=${NEXUS_URL}
+      - NEXUS_USER=${NEXUS_USER}
+      - NEXUS_PASS=${NEXUS_PASS}
+    volumes:
+      - update_center_data:/usr/share/nginx/html
+
+volumes:
+  update_center_data:
