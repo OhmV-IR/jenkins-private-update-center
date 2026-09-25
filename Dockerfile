@@ -1,7 +1,7 @@
 FROM alpine:3.19
 
 # Install Java, Nginx, Curl, and Busybox Cron
-RUN apk add --no-舆-cache \
+RUN apk add --no-cache \
     openjdk17-jre-headless \
     nginx \
     curl \
