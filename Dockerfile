@@ -40,6 +40,11 @@ RUN echo 'server { \
 COPY --from=builder /app/target/dist /opt/update-center2
 COPY --from=builder /app/resources /opt/update-center2/resources
 
+# Resolve the appassembler launcher across regular-file and symlink layouts.
+RUN APP_PATH=$(find -L /opt/update-center2 -type f \( -name "app" -o -name "update-center2" \) -print -quit) && \
+    if [ -z "$APP_PATH" ]; then echo "No update-center2 launcher found under /opt/update-center2" >&2; exit 1; fi && \
+    ln -s "$APP_PATH" /usr/local/bin/update-center2
+
 # Copy sync script
 COPY sync-center.sh /usr/local/bin/sync-center.sh
 RUN chmod +x /usr/local/bin/sync-center.sh
