@@ -26,25 +26,36 @@ pipeline {
                         }
                         trap cleanup EXIT
 
+                        echo "Building test image ${IMAGE}..."
                         docker build -t "$IMAGE" .
+                        echo "Starting test container ${TEST_CONTAINER}..."
                         docker run -d --rm --name "$TEST_CONTAINER" -p 127.0.0.1::80 \
                             --env NEXUS_URL --env NEXUS_USER --env NEXUS_PASS \
                             --env CF_ACCESS_CLIENT_ID --env CF_ACCESS_CLIENT_SECRET \
-                            "$IMAGE" >/dev/null
+                            "$IMAGE"
 
                         TEST_PORT="$(docker port "$TEST_CONTAINER" 80/tcp | awk -F: '{print $NF}')"
                         TEST_URL="http://127.0.0.1:${TEST_PORT}/update-center.json"
-                        for attempt in $(seq 1 120); do
-                            if curl --fail --silent "$TEST_URL" -o /dev/null; then
+                        echo "Container started on port ${TEST_PORT}; waiting for Nexus generation..."
+                        READY=false
+                        for attempt in $(seq 1 60); do
+                            if curl --fail --silent --connect-timeout 3 --max-time 5 "$TEST_URL" -o /dev/null; then
+                                READY=true
                                 break
+                            fi
+                            if [ "$((attempt % 6))" -eq 0 ]; then
+                                echo "Still waiting for update-center.json (${attempt}/60 checks):"
+                                docker logs --tail 5 "$TEST_CONTAINER" || true
                             fi
                             sleep 5
                         done
-                        if ! curl --fail --silent "$TEST_URL" -o /dev/null; then
+                        if [ "$READY" != true ]; then
+                            echo "Timed out waiting for update-center.json after 10 minutes. Container logs:"
                             docker logs --tail 80 "$TEST_CONTAINER"
                             exit 1
                         fi
 
+                        echo "Update-center is ready; validating its JSON..."
                         docker exec "$TEST_CONTAINER" python3 -c "
 import json, urllib.request
 text = urllib.request.urlopen('http://127.0.0.1/update-center.json', timeout=15).read().decode()
@@ -57,6 +68,7 @@ assert isinstance(plugins, dict) and plugins, 'Nexus produced no plugin entries'
 print('Validated non-empty served update-center: %d plugins' % len(plugins))
 "
 
+                        echo "Tagging tested image for publication..."
                         docker tag "$IMAGE" localhost:5000/jenkins-update-center:latest
                     '''
                 }
