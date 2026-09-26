@@ -2,29 +2,32 @@
 set -e
 
 # Configuration
-NEXUS_URL="${NEXUS_URL:-https://nexus.ohmvir.dev/repository/maven-releases}"
-NEXUS_USER="${NEXUS_USER:-}"
-NEXUS_PASS="${NEXUS_PASS:-}"
+NEXUS_URL="${NEXUS_URL:?NEXUS_URL must be set}"
+NEXUS_USER="${NEXUS_USER:?NEXUS_USER must be set}"
+NEXUS_PASS="${NEXUS_PASS:?NEXUS_PASS must be set}"
 OUTPUT_DIR="${OUTPUT_DIR:-/usr/share/nginx/html}"
 mkdir -p "$OUTPUT_DIR"
 
-EXECUTABLE="${UPDATE_CENTER_EXECUTABLE:-$(find /opt/update-center2 /opt/update-center2/bin /opt/update-center2/appassembler/bin -type f \( -name "update-center2" -o -name "app" \) 2>/dev/null | head -n 1)}"
-if [ -z "$EXECUTABLE" ]; then
-  echo "[$(date)] ERROR: Could not locate the update-center2 executable under /opt/update-center2."
+EXECUTABLE="${UPDATE_CENTER_EXECUTABLE:-/usr/local/bin/update-center2}"
+if [ ! -x "$EXECUTABLE" ]; then
+  echo "[$(date)] ERROR: update-center2 executable is missing or not executable: ${EXECUTABLE}"
   exit 1
 fi
 
-chmod +x "$EXECUTABLE"
-
 echo "[$(date)] Scanning Nexus repository at: ${NEXUS_URL}..."
 
-# Construct optional Nexus credentials flags
-set -- "$EXECUTABLE" --id "ohmvir-nexus" --www-dir "$OUTPUT_DIR" --nexus "$NEXUS_URL"
-if [ -n "$NEXUS_USER" ] && [ -n "$NEXUS_PASS" ]; then
-  set -- "$@" --nexus-username "$NEXUS_USER" --nexus-password "$NEXUS_PASS"
-fi
+# update-center2 uses Artifactory's AQL API. The local adapter translates Nexus
+# asset-search responses, while forwarding artifact downloads to Nexus.
+export ARTIFACTORY_URL="http://127.0.0.1:8765/"
+export ARTIFACTORY_API_URL="http://127.0.0.1:8765/api/"
+export ARTIFACTORY_REPOSITORY="releases"
+export ARTIFACTORY_USERNAME="$NEXUS_USER"
+export ARTIFACTORY_PASSWORD="$NEXUS_PASS"
+# GitHub enrichment is optional; empty values let update-center2 use its dumb mode.
+export GITHUB_USERNAME="${GITHUB_USERNAME:-}"
+export GITHUB_PASSWORD="${GITHUB_PASSWORD:-}"
 
-# Execute the launcher script directly
-"$@"
+cd /opt/update-center2
+"$EXECUTABLE" --id "ohmvir-nexus" --www-dir "$OUTPUT_DIR"
 
 echo "[$(date)] Done! Published to ${OUTPUT_DIR}/update-center.json"

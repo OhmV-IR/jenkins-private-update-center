@@ -22,8 +22,8 @@ FROM alpine:3.19
 RUN apk add --no-cache \
     openjdk21-jre-headless \
     nginx \
-    busybox-extras \
-    bash
+    bash \
+    python3
 
 # Setup Nginx directory & lightweight site config
 RUN mkdir -p /run/nginx /usr/share/nginx/html
@@ -38,6 +38,7 @@ RUN echo 'server { \
 
 # Copy application bundle
 COPY --from=builder /app/target/dist /opt/update-center2
+COPY --from=builder /app/resources /opt/update-center2/resources
 
 # Dynamically link the executable script to /usr/local/bin/update-center2
 RUN BIN_PATH=$(find /opt/update-center2 -type f \( -name "update-center2" -o -name "app" \) -print -quit) && \
@@ -49,15 +50,20 @@ RUN BIN_PATH=$(find /opt/update-center2 -type f \( -name "update-center2" -o -na
 COPY sync-center.sh /usr/local/bin/sync-center.sh
 RUN chmod +x /usr/local/bin/sync-center.sh
 
+# Copy the small adapter that exposes Nexus assets as the Artifactory API
+COPY nexus-artifactory-proxy.py /usr/local/bin/nexus-artifactory-proxy.py
+
 # Cron schedule
 RUN echo "*/5 * * * * /usr/local/bin/sync-center.sh >> /var/log/cron.log 2>&1" > /etc/crontabs/root
 
-# Bootstrapping entrypoint
-RUN echo '#!/bin/sh' > /entrypoint.sh && \
-    echo '/usr/local/bin/sync-center.sh' >> /entrypoint.sh && \
-    echo 'crond -b -l 2' >> /entrypoint.sh && \
-    echo 'exec nginx -g "daemon off;"' >> /entrypoint.sh && \
-    chmod +x /entrypoint.sh
+# Start the Nexus adapter, perform an initial sync, then serve and schedule updates.
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'python3 -u /usr/local/bin/nexus-artifactory-proxy.py &' \
+    'for attempt in $(seq 1 15); do wget -qO- http://127.0.0.1:8765/healthz >/dev/null 2>&1 && break; sleep 1; done' \
+    '/usr/local/bin/sync-center.sh || echo "Initial update-center generation failed; nginx will still start."' \
+    'crond -b -l 2' \
+    'exec nginx -g "daemon off;"' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]

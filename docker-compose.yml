@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   jenkins-update-center:
     build: .
@@ -7,11 +5,13 @@ services:
     container_name: jenkins-update-center
     restart: always
     ports:
-      - "8089:80"
+      - "${UPDATE_CENTER_PORT:-8089}:80"
     environment:
       - NEXUS_URL=${NEXUS_URL}
       - NEXUS_USER=${NEXUS_USER}
       - NEXUS_PASS=${NEXUS_PASS}
+      - CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID:-}
+      - CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET:-}
     volumes:
       - update_center_data:/usr/share/nginx/html
 
