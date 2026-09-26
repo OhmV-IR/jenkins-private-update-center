@@ -8,7 +8,7 @@ NEXUS_PASS="${NEXUS_PASS:?NEXUS_PASS must be set}"
 OUTPUT_DIR="${OUTPUT_DIR:-/usr/share/nginx/html}"
 mkdir -p "$OUTPUT_DIR"
 
-EXECUTABLE="${UPDATE_CENTER_EXECUTABLE:-/usr/local/bin/update-center2}"
+EXECUTABLE="${UPDATE_CENTER_EXECUTABLE:-/opt/update-center2/bin/app}"
 if [ ! -x "$EXECUTABLE" ]; then
   echo "[$(date)] ERROR: update-center2 executable is missing or not executable: ${EXECUTABLE}"
   exit 1

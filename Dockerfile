@@ -40,12 +40,6 @@ RUN echo 'server { \
 COPY --from=builder /app/target/dist /opt/update-center2
 COPY --from=builder /app/resources /opt/update-center2/resources
 
-# Dynamically link the executable script to /usr/local/bin/update-center2
-RUN BIN_PATH=$(find /opt/update-center2 -type f \( -name "update-center2" -o -name "app" \) -print -quit) && \
-    if [ -z "$BIN_PATH" ]; then echo "No update-center2 executable found under /opt/update-center2" >&2; exit 1; fi && \
-    chmod +x "$BIN_PATH" && \
-    ln -sf "$BIN_PATH" /usr/local/bin/update-center2
-
 # Copy sync script
 COPY sync-center.sh /usr/local/bin/sync-center.sh
 RUN chmod +x /usr/local/bin/sync-center.sh
