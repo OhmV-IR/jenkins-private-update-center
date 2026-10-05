@@ -12,8 +12,11 @@ services:
       - NEXUS_PASS=${NEXUS_PASS}
       - CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID:-}
       - CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET:-}
+      - UPDATE_CENTER_URL=${UPDATE_CENTER_URL:-http://localhost:8089}
     volumes:
-      - update_center_data:/usr/share/nginx/html
+      # Holds the published site, the Nexus download cache and the signing key.
+      # Keep it across upgrades: Jenkins trusts the certificate generated here.
+      - update_center_data:/var/lib/update-center
 
 volumes:
   update_center_data:

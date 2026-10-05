@@ -32,6 +32,7 @@ pipeline {
                         docker run -d --rm --name "$TEST_CONTAINER" -p 127.0.0.1::80 \
                             --env NEXUS_URL --env NEXUS_USER --env NEXUS_PASS \
                             --env CF_ACCESS_CLIENT_ID --env CF_ACCESS_CLIENT_SECRET \
+                            --env UPDATE_CENTER_URL=http://127.0.0.1 \
                             "$IMAGE"
 
                         TEST_PORT="$(docker port "$TEST_CONTAINER" 80/tcp | awk -F: '{print $NF}')"
@@ -57,7 +58,7 @@ pipeline {
 
                         echo "Update-center is ready; validating its JSON..."
                         docker exec "$TEST_CONTAINER" python3 -c "
-import json, urllib.request
+import base64, hashlib, json, urllib.request
 text = urllib.request.urlopen('http://127.0.0.1/update-center.json', timeout=15).read().decode()
 wrapper = 'updateCenter.post('
 assert text.startswith(wrapper) and text.rstrip().endswith(');'), 'invalid update-center wrapper'
@@ -65,7 +66,15 @@ document = json.loads(text[len(wrapper):-2].strip())
 plugins = document.get('plugins')
 assert str(document.get('updateCenterVersion')) == '1', 'unexpected update-center version'
 assert isinstance(plugins, dict) and plugins, 'Nexus produced no plugin entries'
-print('Validated non-empty served update-center: %d plugins' % len(plugins))
+assert document.get('signature', {}).get('correct_signature'), 'update-center.json is not signed'
+assert 'core' not in document or document['core'].get('version'), 'core entry without a version breaks Jenkins'
+for name, plugin in plugins.items():
+    assert plugin['url'].startswith('http://127.0.0.1/download/plugins/'), 'unexpected download URL: ' + plugin['url']
+name, plugin = sorted(plugins.items(), key=lambda item: item[1]['size'])[0]
+data = urllib.request.urlopen(plugin['url'], timeout=60).read()
+assert base64.b64encode(hashlib.sha256(data).digest()).decode() == plugin['sha256'], 'checksum mismatch for ' + name
+urllib.request.urlopen('http://127.0.0.1/update-center.crt', timeout=15).read()
+print('Validated signed update-center with %d plugins; downloaded %s %s' % (len(plugins), name, plugin['version']))
 "
 
                         echo "Tagging tested image for publication..."

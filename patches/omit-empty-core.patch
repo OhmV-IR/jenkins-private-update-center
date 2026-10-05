@@ -1,0 +1,16 @@
+diff --git a/src/main/java/io/jenkins/update_center/json/UpdateCenterRoot.java b/src/main/java/io/jenkins/update_center/json/UpdateCenterRoot.java
+index 4292b5a..997b929 100644
+--- a/src/main/java/io/jenkins/update_center/json/UpdateCenterRoot.java
++++ b/src/main/java/io/jenkins/update_center/json/UpdateCenterRoot.java
+@@ -74,7 +74,10 @@ public class UpdateCenterRoot extends WithSignature {
+             }
+         }
+ 
+-        core = new UpdateCenterCore(repo.getJenkinsWarsByVersionNumber());
++        // Jenkins rejects a "core" entry without a version, so omit it when the repository has no jenkins.war.
++        if (!repo.getJenkinsWarsByVersionNumber().isEmpty()) {
++            core = new UpdateCenterCore(repo.getJenkinsWarsByVersionNumber());
++        }
+     }
+ 
+     private static UpdateCenterDeprecation deprecationForPlugin(String artifactId) {

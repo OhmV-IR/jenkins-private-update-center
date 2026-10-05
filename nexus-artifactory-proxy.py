@@ -15,6 +15,8 @@ nexus_user = os.environ.get("NEXUS_USER", "")
 nexus_pass = os.environ.get("NEXUS_PASS", "")
 cloudflare_id = os.environ.get("CF_ACCESS_CLIENT_ID", "")
 cloudflare_secret = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+maintainer_id = os.environ.get("PLUGIN_MAINTAINER_ID", "ohmvir")
+maintainer_name = os.environ.get("PLUGIN_MAINTAINER_NAME", maintainer_id)
 user_agent = "Apache-Maven/3.9.6"
 if not nexus_user or not nexus_pass:
     raise SystemExit("NEXUS_USER and NEXUS_PASS must be set")
@@ -43,9 +45,9 @@ class SameOriginRedirectHandler(HTTPRedirectHandler):
 nexus_opener = build_opener(SameOriginRedirectHandler)
 
 
-def nexus_headers():
+def nexus_headers(accept="application/json"):
     headers = {
-        "Accept": "application/json",
+        "Accept": accept,
         "Authorization": auth_header,
         "User-Agent": user_agent,
     }
@@ -97,11 +99,46 @@ def artifactory_results():
     return {"results": results}
 
 
+def maintainers_index():
+    """Plugin GA to maintainer IDs, in the format of reports.jenkins.io/maintainers.index.json."""
+    index = {}
+    for asset in search_assets():
+        path = asset.get("path", "").strip("/")
+        if not path.lower().endswith((".hpi", ".jpi")):
+            continue
+        parts = path.split("/")
+        if len(parts) < 4:
+            continue
+        index[".".join(parts[:-3]) + ":" + parts[-3]] = [maintainer_id]
+    return index
+
+
+def maintainers_info():
+    """Maintainer details, in the format of reports.jenkins.io/maintainers-info-report.json."""
+    return [{"name": maintainer_id, "displayName": maintainer_name}]
+
+
 class Handler(BaseHTTPRequestHandler):
+    def send_json(self, document):
+        body = json.dumps(document).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         if self.path == "/healthz":
             self.send_response(200)
             self.end_headers()
+            return
+        if self.path in ("/maintainers.index.json", "/maintainers-info-report.json"):
+            try:
+                self.send_json(maintainers_index() if self.path == "/maintainers.index.json" else maintainers_info())
+            except (HTTPError, URLError, TimeoutError, ValueError) as error:
+                status = f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__
+                print(f"Nexus asset search failed: {status}")
+                self.send_error(502, "Nexus asset search failed")
             return
         prefix = "/releases/"
         if not self.path.startswith(prefix):
@@ -113,12 +150,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(400)
             return
         target = repository_url + quote(artifact_path, safe="/")
-        request = Request(target, headers={
-            "Authorization": auth_header,
-            "User-Agent": user_agent,
-            **({"CF-Access-Client-Id": cloudflare_id, "CF-Access-Client-Secret": cloudflare_secret}
-               if cloudflare_id and cloudflare_secret else {}),
-        })
+        request = Request(target, headers=nexus_headers("*/*"))
         try:
             with nexus_opener.open(request, timeout=120) as response:
                 content = response.read()
@@ -146,12 +178,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.rfile.read(int(self.headers.get("Content-Length", "0")))
         try:
-            body = json.dumps(artifactory_results()).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self.send_json(artifactory_results())
         except (HTTPError, URLError, TimeoutError, ValueError, KeyError) as error:
             status = f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__
             print(f"Nexus asset search failed: {status}")
@@ -162,4 +189,4 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8765), Handler).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", 8765), Handler).serve_forever()

@@ -1,0 +1,5 @@
+# Files copied into the Linux image must keep LF line endings on Windows checkouts.
+*.sh text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+*.patch text eol=lf
